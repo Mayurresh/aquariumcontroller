@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global Aquarium Controller</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            color: #e0e0e0;
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+        }
+        h1 {
+            color: #58a6ff;
+            margin-bottom: 30px;
+            text-shadow: 0 0 10px rgba(88, 166, 255, 0.8);
+        }
+        .container {
+            max-width: 600px;
+            margin: 20px auto;
+            padding: 25px;
+            background-color: #2d2d2d;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        }
+        .time-display {
+            font-size: 2.5em;
+            color: #79c0ff;
+            margin-bottom: 25px;
+            font-weight: bold;
+        }
+        .status-section p {
+            font-size: 1.1em;
+            margin: 12px 0;
+            color: #c9d1d9;
+        }
+        .button-group {
+            margin-top: 30px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 15px;
+        }
+        .button {
+            padding: 12px 25px;
+            font-size: 1em;
+            cursor: pointer;
+            color: #ffffff;
+            background-color: #0d6efd;
+            border: none;
+            border-radius: 6px;
+            transition: background-color 0.3s;
+        }
+        .button:hover { background-color: #0a58ca; }
+        .button-green { background-color: #198754; }
+        .button-green:hover { background-color: #157347; }
+        .control-group {
+            margin-top: 25px;
+            padding-top: 20px;
+            border-top: 1px solid #444;
+        }
+        .control-group input[type="number"] {
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #555;
+            background-color: #333;
+            color: #e0e0e0;
+            width: 80px;
+            margin-right: 10px;
+        }
+        .status-on { color: #28a745; font-weight: bold; }
+        .status-off { color: #dc3545; font-weight: bold; }
+        ul { text-align: left; background: #333; padding: 15px; border-radius: 6px; max-height: 200px; overflow-y: auto; }
+        li { list-style: none; padding: 5px 0; border-bottom: 1px solid #444; }
+    </style>
+
+    <!-- Firebase Libraries -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+</head>
+<body>
+    <h1>Aquarium Controller (Global Cloud)</h1>
+    <div class="container">
+        <div id="live-clock" class="time-display">--:--:--</div>
+        
+        <div class="status-section">
+            <p><strong>Light Status:</strong> <span id="light-status">Loading...</span></p>
+            <p><strong>Fan Status:</strong> <span id="fan-status">Loading...</span></p>
+            <p><strong>Last Feed:</strong> <span id="last-feed">Loading...</span></p>
+        </div>
+
+        <div class="button-group">
+            <button class="button" onclick="toggleLight()">Toggle Light</button>
+            <button class="button button-green" onclick="toggleFan()">Toggle Fan</button>
+            <button class="button" onclick="feedFish()">Feed Fish Now</button>
+        </div>
+
+        <div class="control-group">
+            <label for="range">Motion Range (cm):</label>
+            <input type="number" id="range" min="1" max="400" value="100">
+            <button class="button" onclick="setMotionRange()">Set Range</button><br><br>
+
+            <label for="feedtimer_val">Time Delay for feeding (ms):</label>
+            <input type="number" id="feedtimer_val" min="100" max="4000" value="1500">
+            <button class="button" onclick="setFeedTimer()">Set Timer</button>
+        </div>
+
+        <div class="control-group">
+            <h3>Motion Detection Log</h3>
+            <ul id="motion-log"><li>No logs yet</li></ul>
+        </div>
+    </div>
+
+    <script>
+        // Replace with your Firebase Project Configuration from Firebase Console
+        const firebaseConfig = {
+            apiKey: "YOUR_WEB_API_KEY",
+            authDomain: "YOUR-PROJECT-ID.firebaseapp.com",
+            databaseURL: "https://YOUR-PROJECT-ID-default-rtdb.firebaseio.com/",
+            projectId: "YOUR-PROJECT-ID",
+            storageBucket: "YOUR-PROJECT-ID.appspot.com",
+            messagingSenderId: "123456789",
+            appId: "1:123456789:web:abcdef"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        let currentLightState = false;
+        let currentFanState = false;
+
+        // Real-Time Listeners for Status Updates
+        db.ref('/status').on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                currentLightState = data.light || false;
+                currentFanState = data.fan || false;
+
+                document.getElementById('light-status').textContent = currentLightState ? 'ON' : 'OFF';
+                document.getElementById('light-status').className = currentLightState ? 'status-on' : 'status-off';
+
+                document.getElementById('fan-status').textContent = currentFanState ? 'ON' : 'OFF';
+                document.getElementById('fan-status').className = currentFanState ? 'status-on' : 'status-off';
+
+                document.getElementById('last-feed').textContent = data.lastFeed || 'N/A';
+            }
+        });
+
+        // Real-Time Listener for Motion History
+        db.ref('/motionHistory').limitToLast(15).on('value', (snapshot) => {
+            const logUl = document.getElementById('motion-log');
+            logUl.innerHTML = '';
+            snapshot.forEach((childSnapshot) => {
+                const li = document.createElement('li');
+                li.textContent = childSnapshot.val();
+                logUl.prepend(li);
+            });
+        });
+
+        // Real-Time Listener for Settings
+        db.ref('/settings/motionRange').on('value', (s) => {
+            if (s.exists()) document.getElementById('range').value = s.val();
+        });
+        db.ref('/settings/feedtimer').on('value', (s) => {
+            if (s.exists()) document.getElementById('feedtimer_val').value = s.val();
+        });
+
+        // Control Commands
+        function toggleLight() {
+            db.ref('/controls/light').set(!currentLightState);
+        }
+
+        function toggleFan() {
+            db.ref('/controls/fan').set(!currentFanState);
+        }
+
+        function feedFish() {
+            db.ref('/triggers/feedNow').set(true);
+        }
+
+        function setMotionRange() {
+            const val = parseInt(document.getElementById('range').value);
+            db.ref('/settings/motionRange').set(val);
+        }
+
+        function setFeedTimer() {
+            const val = parseInt(document.getElementById('feedtimer_val').value);
+            db.ref('/settings/feedtimer').set(val);
+        }
+
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('live-clock').textContent = now.toTimeString().split(' ')[0];
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+    </script>
+</body>
+</html>
