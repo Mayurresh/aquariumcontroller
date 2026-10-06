@@ -5,21 +5,69 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Aquarium Remote Web Dashboard</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #121212; color: #e0e0e0; margin: 0; padding: 20px; text-align: center; }
-        h1 { color: #58a6ff; margin-bottom: 20px; text-shadow: 0 0 10px rgba(88, 166, 255, 0.8); }
-        .container { max-width: 500px; margin: 20px auto; padding: 25px; background-color: #2d2d2d; border-radius: 8px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3); }
-        .badge { display: inline-block; padding: 6px 12px; font-weight: bold; border-radius: 12px; margin-bottom: 15px; }
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background-color: #121212; 
+            color: #e0e0e0; 
+            margin: 0; 
+            padding: 20px; 
+            text-align: center; 
+        }
+        h1 { 
+            color: #58a6ff; 
+            margin-bottom: 20px; 
+            text-shadow: 0 0 10px rgba(88, 166, 255, 0.8); 
+        }
+        .container { 
+            max-width: 500px; 
+            margin: 20px auto; 
+            padding: 25px; 
+            background-color: #2d2d2d; 
+            border-radius: 8px; 
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3); 
+        }
+        .badge { 
+            display: inline-block; 
+            padding: 6px 12px; 
+            font-weight: bold; 
+            border-radius: 12px; 
+            margin-bottom: 15px; 
+        }
         .online { background-color: #198754; color: white; }
         .offline { background-color: #dc3545; color: white; }
         .status-section p { font-size: 1.1em; margin: 12px 0; color: #c9d1d9; }
         .button-group { margin-top: 25px; display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
-        .button { padding: 12px 20px; font-size: 1em; cursor: pointer; color: #ffffff; background-color: #0d6efd; border: none; border-radius: 6px; }
+        .button { 
+            padding: 12px 20px; 
+            font-size: 1em; 
+            cursor: pointer; 
+            color: #ffffff; 
+            background-color: #0d6efd; 
+            border: none; 
+            border-radius: 6px; 
+            transition: background-color 0.2s ease;
+        }
+        .button:hover { background-color: #0b5ed7; }
         .button-green { background-color: #198754; }
+        .button-green:hover { background-color: #157347; }
         .control-group { margin-top: 20px; padding-top: 15px; border-top: 1px solid #444; }
         .control-group label { margin-right: 8px; color: #c9d1d9; }
-        .control-group input[type="number"] { padding: 8px; border-radius: 4px; border: 1px solid #555; background-color: #333; color: #e0e0e0; width: 60px; margin-right: 10px; }
+        .control-group input[type="number"], .control-group input[type="password"] { 
+            padding: 10px; 
+            border-radius: 4px; 
+            border: 1px solid #555; 
+            background-color: #333; 
+            color: #e0e0e0; 
+            outline: none;
+        }
+        .control-group input[type="number"] { width: 60px; margin-right: 10px; }
         .status-on { color: #28a745; font-weight: bold; }
         .status-off { color: #dc3545; font-weight: bold; }
+
+        /* Lock Screen Styling */
+        #lock-screen { display: block; }
+        #dashboard-content { display: none; }
+        .error-msg { color: #dc3545; margin-top: 10px; font-weight: bold; display: none; }
     </style>
     <!-- Firebase App & Database SDKs -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
@@ -27,7 +75,20 @@
 </head>
 <body>
     <h1>Aquarium Controller Cloud Dashboard</h1>
-    <div class="container">
+
+    <!-- 1. LOCK SCREEN INTERFACE -->
+    <div id="lock-screen" class="container">
+        <h2>🔒 Protected Access</h2>
+        <p>Please enter the access password to continue.</p>
+        <div class="control-group" style="border-top: none; padding-top: 0;">
+            <input type="password" id="password-input" placeholder="Enter Password" onkeypress="handleKeyPress(event)">
+            <button class="button button-green" onclick="checkPassword()">Unlock</button>
+        </div>
+        <div id="password-error" class="error-msg">Incorrect Password! Try again.</div>
+    </div>
+
+    <!-- 2. MAIN DASHBOARD CONTENT (HIDDEN UNTIL UNLOCKED) -->
+    <div id="dashboard-content" class="container">
         <div id="connection-status" class="badge offline">Connecting...</div>
         
         <div class="status-section">
@@ -50,81 +111,128 @@
             <input type="number" id="feeder-time" min="1" max="10" value="2">
             <button class="button button-green" onclick="updateServo()">Update Servo</button>
         </div>
+        
+        <div style="margin-top: 25px;">
+            <button class="button" style="background-color: #6c757d;" onclick="lockDashboard()">Lock Dashboard</button>
+        </div>
     </div>
 
     <script>
-        // REPLACE WITH YOUR FIREBASE PROJECT CONFIG
-        const firebaseConfig = {
-          apiKey: "AIzaSyBInwzbPhm0rBxe34Jp9kqE8Mor7amTTEc",
-          authDomain: "aquariumfeeder-9777a.firebaseapp.com",
-          databaseURL: "https://aquariumfeeder-9777a-default-rtdb.asia-southeast1.firebasedatabase.app",
-          projectId: "aquariumfeeder-9777a",
-          storageBucket: "aquariumfeeder-9777a.firebasestorage.app",
-          messagingSenderId: "850326493337",
-          appId: "1:850326493337:web:313fe915667fb961334008"
-        };
+        // Password Protection Logic
+        const CORRECT_PASSWORD = "Mayuhari";
 
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.database();
+        function checkPassword() {
+            const inputVal = document.getElementById('password-input').value;
+            const errorEl = document.getElementById('password-error');
 
-        let currentLightState = false;
-        let currentFanState = false;
-
-        // Sync Status Realtime
-        db.ref('/status').on('value', snapshot => {
-            const data = snapshot.val() || {};
-            
-            // Light
-            currentLightState = data.light || false;
-            document.getElementById('light-status').textContent = currentLightState ? 'ON' : 'OFF';
-            document.getElementById('light-status').className = currentLightState ? 'status-on' : 'status-off';
-
-            // Fan
-            currentFanState = data.fan || false;
-            document.getElementById('fan-status').textContent = currentFanState ? 'ON' : 'OFF';
-            document.getElementById('fan-status').className = currentFanState ? 'status-on' : 'status-off';
-
-            // Last Feed & Voltage
-            document.getElementById('last-feed').textContent = data.lastFeed || 'Never';
-            document.getElementById('voltage-status').textContent = (data.voltage ? data.voltage.toFixed(2) : '0') + ' V';
-
-            // Online / Offline Indicator (Checks heartbeat timestamp within 10s)
-            const lastSeen = data.lastSeen || 0;
-            const nowEpoch = Math.floor(Date.now() / 1000);
-            const statusEl = document.getElementById('connection-status');
-
-            if (nowEpoch - lastSeen < 10) {
-                statusEl.textContent = 'ONLINE';
-                statusEl.className = 'badge online';
+            if (inputVal === CORRECT_PASSWORD) {
+                sessionStorage.setItem('aquarium_authenticated', 'true');
+                showDashboard();
             } else {
-                statusEl.textContent = 'OFFLINE';
-                statusEl.className = 'badge offline';
+                errorEl.style.display = 'block';
+                document.getElementById('password-input').value = '';
             }
-        });
-
-        function toggleLight() {
-            db.ref('/controls/light').set(!currentLightState);
         }
 
-        function toggleFan() {
-            db.ref('/controls/fan').set(!currentFanState);
-        }
-
-        function feedNow() {
-            db.ref('/controls/triggerFeed').set(true);
-        }
-
-        function updateServo() {
-            const angle = parseInt(document.getElementById('feeder-angle').value);
-            const delaySec = parseInt(document.getElementById('feeder-time').value);
-
-            if (angle >= 0 && angle <= 180 && delaySec >= 1 && delaySec <= 10) {
-                db.ref('/controls/servoAngle').set(angle);
-                db.ref('/controls/servoDelay').set(delaySec);
-                alert('Servo settings sent to cloud!');
-            } else {
-                alert('Invalid inputs! Angle (0-180), Delay (1-10s)');
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                checkPassword();
             }
+        }
+
+        function showDashboard() {
+            document.getElementById('lock-screen').style.display = 'none';
+            document.getElementById('dashboard-content').style.display = 'block';
+            initFirebase();
+        }
+
+        function lockDashboard() {
+            sessionStorage.removeItem('aquarium_authenticated');
+            location.reload();
+        }
+
+        // Auto-unlock if already authenticated in this session
+        if (sessionStorage.getItem('aquarium_authenticated') === 'true') {
+            showDashboard();
+        }
+
+        // --- FIREBASE LOGIC ---
+        function initFirebase() {
+            // REPLACE WITH YOUR FIREBASE PROJECT CONFIG
+            const firebaseConfig = {
+                apiKey: "AIzaSyBInwzbPhm0rBxe34Jp9kqE8Mor7amTTEc",
+                  authDomain: "aquariumfeeder-9777a.firebaseapp.com",
+                  databaseURL: "https://aquariumfeeder-9777a-default-rtdb.asia-southeast1.firebasedatabase.app",
+                  projectId: "aquariumfeeder-9777a",
+                  storageBucket: "aquariumfeeder-9777a.firebasestorage.app",
+                  messagingSenderId: "850326493337",
+                  appId: "1:850326493337:web:313fe915667fb961334008"
+            };
+
+            if (!firebase.apps.length) {
+                firebase.initializeApp(firebaseConfig);
+            }
+            const db = firebase.database();
+
+            let currentLightState = false;
+            let currentFanState = false;
+
+            // Sync Status Realtime
+            db.ref('/status').on('value', snapshot => {
+                const data = snapshot.val() || {};
+                
+                // Light
+                currentLightState = data.light || false;
+                document.getElementById('light-status').textContent = currentLightState ? 'ON' : 'OFF';
+                document.getElementById('light-status').className = currentLightState ? 'status-on' : 'status-off';
+
+                // Fan
+                currentFanState = data.fan || false;
+                document.getElementById('fan-status').textContent = currentFanState ? 'ON' : 'OFF';
+                document.getElementById('fan-status').className = currentFanState ? 'status-on' : 'status-off';
+
+                // Last Feed & Voltage
+                document.getElementById('last-feed').textContent = data.lastFeed || 'Never';
+                document.getElementById('voltage-status').textContent = (data.voltage ? data.voltage.toFixed(2) : '0') + ' V';
+
+                // Online / Offline Indicator (Checks heartbeat timestamp within 10s)
+                const lastSeen = data.lastSeen || 0;
+                const nowEpoch = Math.floor(Date.now() / 1000);
+                const statusEl = document.getElementById('connection-status');
+
+                if (nowEpoch - lastSeen < 10) {
+                    statusEl.textContent = 'ONLINE';
+                    statusEl.className = 'badge online';
+                } else {
+                    statusEl.textContent = 'OFFLINE';
+                    statusEl.className = 'badge offline';
+                }
+            });
+
+            window.toggleLight = function() {
+                db.ref('/controls/light').set(!currentLightState);
+            };
+
+            window.toggleFan = function() {
+                db.ref('/controls/fan').set(!currentFanState);
+            };
+
+            window.feedNow = function() {
+                db.ref('/controls/triggerFeed').set(true);
+            };
+
+            window.updateServo = function() {
+                const angle = parseInt(document.getElementById('feeder-angle').value);
+                const delaySec = parseInt(document.getElementById('feeder-time').value);
+
+                if (angle >= 0 && angle <= 180 && delaySec >= 1 && delaySec <= 10) {
+                    db.ref('/controls/servoAngle').set(angle);
+                    db.ref('/controls/servoDelay').set(delaySec);
+                    alert('Servo settings sent to cloud!');
+                } else {
+                    alert('Invalid inputs! Angle (0-180), Delay (1-10s)');
+                }
+            };
         }
     </script>
 </body>
